@@ -1,16 +1,80 @@
+import compression from "compression";
 import express from "express";
-import bodyParser from "body-parser";
+import helmet from "helmet";
 import { env } from "./config/env.js";
+import { closeRedisClient } from "./lib/redisClient.js";
+import { logger } from "./lib/logger.js";
+import { requestContextMiddleware } from "./middleware/requestContext.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
+import { redis } from "./store/index.js";
 
 const app = express();
-app.use(bodyParser.json());
+
+app.use(requestContextMiddleware);
+app.use(
+  helmet({
+    contentSecurityPolicy: false
+  })
+);
+app.use(compression());
+app.use(
+  express.json({
+    verify: (req, _res, buffer) => {
+      req.rawBody = buffer;
+    }
+  })
+);
+
 app.use(webhookRoutes);
 
-app.get("/health", (_req, res) => {
-  res.status(200).json({ ok: true });
+app.get("/health", async (_req, res) => {
+  const criticalEnvOk = Boolean(
+    env.whatsappToken && env.phoneNumberId && env.openaiApiKey && env.metaAppSecret
+  );
+
+  let redisOk = true;
+  if (redis) {
+    try {
+      await redis.ping();
+      redisOk = true;
+    } catch {
+      redisOk = false;
+    }
+  }
+
+  const ok = criticalEnvOk && redisOk;
+  return res.status(ok ? 200 : 503).json({
+    ok,
+    checks: {
+      env: criticalEnvOk,
+      redis: redis ? redisOk : "not_configured"
+    }
+  });
 });
 
-app.listen(env.port, () => {
-  console.log(`Servidor corriendo en puerto ${env.port}`);
+const server = app.listen(env.port, () => {
+  logger.info({ port: env.port }, "Server started");
+});
+
+async function gracefulShutdown(signal) {
+  logger.info({ signal }, "Graceful shutdown started");
+
+  server.close(async () => {
+    try {
+      await closeRedisClient();
+      logger.info("Graceful shutdown completed");
+      process.exit(0);
+    } catch (error) {
+      logger.error({ err: error }, "Graceful shutdown failed");
+      process.exit(1);
+    }
+  });
+}
+
+process.on("SIGTERM", () => {
+  void gracefulShutdown("SIGTERM");
+});
+
+process.on("SIGINT", () => {
+  void gracefulShutdown("SIGINT");
 });

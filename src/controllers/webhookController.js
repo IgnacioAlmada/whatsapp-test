@@ -1,11 +1,18 @@
 import { env } from "../config/env.js";
+import { logger } from "../lib/logger.js";
+import { enqueueTask } from "../queue/backgroundQueue.js";
+import { dedupeStore, sessionStore } from "../store/index.js";
 import { generateGPTResponse } from "../services/openaiService.js";
-import { sendWhatsAppMessage } from "../services/whatsappService.js";
 import {
-  appendAssistantMessage,
-  appendUserMessage,
-  getSessionHistory
-} from "../store/sessionStore.js";
+  sendRateLimitMessage,
+  sendTypingIndicator,
+  sendWhatsAppMessage
+} from "../services/whatsappService.js";
+import { FixedWindowRateLimiter } from "../utils/rateLimiter.js";
+import { extractIncomingMessages } from "../utils/whatsappPayload.js";
+
+const globalLimiter = new FixedWindowRateLimiter(env.globalRateLimitPerMinute, 60_000);
+const userLimiter = new FixedWindowRateLimiter(env.userRateLimitPerMinute, 60_000);
 
 export function verifyWebhook(req, res) {
   const mode = req.query["hub.mode"];
@@ -13,33 +20,67 @@ export function verifyWebhook(req, res) {
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === env.verifyToken) {
-    console.log("Webhook verificado");
+    req.log.info("Meta webhook verified");
     return res.status(200).send(challenge);
   }
 
+  req.log.warn("Meta webhook verify rejected");
   return res.sendStatus(403);
 }
 
-export async function receiveWebhook(req, res) {
-  try {
-    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-    const from = message?.from;
-    const text = message?.text?.body;
+async function processMessage(message, requestId) {
+  const { id, from, text } = message;
 
-    if (!from || !text) {
-      return res.sendStatus(200);
+  if (await dedupeStore.has(id)) {
+    return;
+  }
+  await dedupeStore.set(id);
+
+  const globalResult = globalLimiter.consume("global");
+  const userResult = userLimiter.consume(from);
+
+  if (!globalResult.allowed || !userResult.allowed) {
+    try {
+      await sendRateLimitMessage(from);
+    } catch (error) {
+      logger.error({ requestId, err: error, meta: error.response?.data }, "Failed to send rate limit message");
     }
+    return;
+  }
 
-    appendUserMessage(from, text);
-    const history = getSessionHistory(from);
+  try {
+    await sessionStore.append(from, { role: "user", content: text });
+    const history = await sessionStore.getHistory(from);
+
+    await sendTypingIndicator(from);
     const aiResponse = await generateGPTResponse(history);
 
-    appendAssistantMessage(from, aiResponse);
+    await sessionStore.append(from, { role: "assistant", content: aiResponse });
     await sendWhatsAppMessage(from, aiResponse);
-
-    return res.sendStatus(200);
   } catch (error) {
-    console.error("Webhook processing failed:", error.response?.data || error.message);
-    return res.sendStatus(500);
+    logger.error({ requestId, messageId: id, err: error, meta: error.response?.data }, "Webhook task failed");
+
+    try {
+      await sendWhatsAppMessage(from, "Tuvimos un problema temporal procesando tu mensaje. Intentá nuevamente en unos segundos.");
+    } catch (sendError) {
+      logger.error({ requestId, messageId: id, err: sendError, meta: sendError.response?.data }, "Fallback message failed");
+    }
   }
+}
+
+export function receiveWebhook(req, res) {
+  const incomingMessages = extractIncomingMessages(req.body);
+
+  if (incomingMessages.length === 0) {
+    return res.sendStatus(200);
+  }
+
+  for (const message of incomingMessages) {
+    const requestId = req.id;
+    enqueueTask(async () => {
+      await processMessage(message, requestId);
+    });
+  }
+
+  return res.sendStatus(200);
 }

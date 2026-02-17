@@ -1,18 +1,13 @@
-const MAX_MESSAGES = 20;
-const sessions = new Map();
+import { sessionStore } from "./index.js";
 
-export function appendUserMessage(userPhone, content) {
-  const history = sessions.get(userPhone) ?? [];
-  history.push({ role: "user", content });
-  sessions.set(userPhone, history.slice(-MAX_MESSAGES));
+export async function appendUserMessage(userPhone, content) {
+  await sessionStore.append(userPhone, { role: "user", content });
 }
 
-export function appendAssistantMessage(userPhone, content) {
-  const history = sessions.get(userPhone) ?? [];
-  history.push({ role: "assistant", content });
-  sessions.set(userPhone, history.slice(-MAX_MESSAGES));
+export async function appendAssistantMessage(userPhone, content) {
+  await sessionStore.append(userPhone, { role: "assistant", content });
 }
 
-export function getSessionHistory(userPhone) {
-  return sessions.get(userPhone) ?? [];
+export async function getSessionHistory(userPhone) {
+  return sessionStore.getHistory(userPhone);
 }
