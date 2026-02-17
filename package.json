@@ -1,0 +1,26 @@
+{
+  "name": "whatsapp-gpt5-bot",
+  "version": "1.0.0",
+  "description": "WhatsApp bot using Meta Cloud API and OpenAI GPT-5",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "check": "node --check src/index.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "meta",
+    "openai",
+    "gpt-5",
+    "express"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.7",
+    "body-parser": "^1.20.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1"
+  }
+}
