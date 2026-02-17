@@ -1,82 +1,74 @@
 # WhatsApp Bot + GPT-5 (Meta Cloud API)
 
-Backend Node.js + Express para integrar WhatsApp Cloud API (Meta) con OpenAI Responses API (GPT-5 / GPT-5-mini), listo para escenarios de producción livianos.
+Backend **TypeScript** + Express para integrar WhatsApp Cloud API (Meta) con OpenAI Responses API (GPT-5 / GPT-5-mini), listo para producción liviana.
 
 ## Qué incluye
 
-- Verificación de webhook de Meta (`GET /webhook` + `POST /webhook` con firma HMAC SHA-256).
+- Verificación de webhook Meta (`GET /webhook` + `POST /webhook` firmado con HMAC SHA-256).
 - Parsing robusto de payloads WhatsApp (texto, interactivos button/list, múltiples mensajes por webhook).
-- Acknowledge rápido (200 inmediato) + procesamiento en cola en segundo plano.
+- ACK inmediato del webhook + procesamiento en segundo plano.
 - Idempotencia por `message.id` con TTL (memoria o Redis opcional).
-- Contexto conversacional persistible (memoria o Redis opcional, con truncado por cantidad y tamaño).
+- Contexto conversacional persistible (memoria o Redis), con truncado por cantidad y tamaño.
 - OpenAI Responses API con timeout y fallback.
-- Reintentos con backoff para envíos a Meta (5xx/429 o errores transitorios).
-- Rate limit global y por usuario (`from`).
-- Logging estructurado (pino + request-id), healthcheck extendido, helmet, compression y graceful shutdown.
+- Reintentos con backoff para Meta (5xx/429/transitorios).
+- Rate limiting global y por usuario (`from`).
+- Logging estructurado (pino + request-id), helmet, compression, healthcheck extendido y graceful shutdown.
 
 ## Requisitos
 
 - Node.js 18+
 - Cuenta Meta Developer con WhatsApp Cloud API configurada
 - API key de OpenAI con acceso al modelo elegido
-- (Opcional) Redis para dedupe/contexto persistente
+- (Opcional) Redis
 
 ## Setup local
 
 ```bash
 npm install
 cp .env.example .env
+npm run build
 npm run start
 ```
 
-> Si no podés instalar dependencias en tu entorno CI por políticas de red, dejá el código y corré estos pasos en tu entorno de deploy/local con acceso al registro npm.
+Para desarrollo:
+
+```bash
+npm run dev
+```
 
 ## Variables de entorno
 
-Tomá `.env.example` como referencia.
-
-### Críticas
+Ver `.env.example`. Variables críticas:
 
 - `WHATSAPP_TOKEN`
 - `PHONE_NUMBER_ID`
 - `VERIFY_TOKEN`
-- `META_APP_SECRET` (usado para verificar `X-Hub-Signature-256`)
+- `META_APP_SECRET`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
-
-### Opcionales recomendadas
-
-- `REDIS_URL`
-- `OPENAI_TEMPERATURE`
-- `OPENAI_MAX_OUTPUT_TOKENS`
-- `OPENAI_TIMEOUT_MS`
-- `META_TIMEOUT_MS`
-- `GLOBAL_RATE_LIMIT_PER_MINUTE`
-- `USER_RATE_LIMIT_PER_MINUTE`
 
 ## Endpoints
 
 - `GET /webhook`: verificación de suscripción Meta.
 - `POST /webhook`: recepción de eventos Meta (requiere firma válida).
-- `GET /health`: estado de app + chequeo de Redis si está configurado.
+- `GET /health`: estado de app + chequeo Redis (si configurado).
 
-## Nota sobre verificación de firma
+## Nota de firma de webhook
 
-Para `POST /webhook` se valida la firma `X-Hub-Signature-256` con `META_APP_SECRET` usando el **raw body** del request. Si la firma falla, se responde `401/403` sin procesar mensajes.
+`POST /webhook` valida `X-Hub-Signature-256` con `META_APP_SECRET` sobre el raw body. Firma inválida => `401/403`.
 
-## Deploy checklist (producción)
+## Deploy checklist
 
 - [ ] HTTPS público habilitado.
-- [ ] Webhook URL pública correcta configurada en Meta.
-- [ ] `META_APP_SECRET` seteado y coincidente con la app de Meta.
-- [ ] Token de WhatsApp permanente o con rotación controlada.
-- [ ] `REDIS_URL` configurado para dedupe/contexto compartido entre instancias.
-- [ ] Variables de timeout/rate limit ajustadas por carga real.
-- [ ] Logs centralizados y alertas sobre `/health`.
+- [ ] Webhook URL pública configurada en Meta.
+- [ ] `META_APP_SECRET` correcto.
+- [ ] Token de WhatsApp permanente/rotación controlada.
+- [ ] `REDIS_URL` para multi-instancia.
+- [ ] Timeouts y rate limits ajustados por tráfico.
 
 ## Scripts
 
-- `npm run start`
-- `npm run dev`
-- `npm run check`
-- `npm run check:all`
+- `npm run dev` (tsx watch)
+- `npm run check` (tsc --noEmit)
+- `npm run build` (tsc)
+- `npm run start` (node dist/index.js)
