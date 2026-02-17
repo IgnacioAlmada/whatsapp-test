@@ -1,0 +1,39 @@
+{
+  "name": "whatsapp-gpt5-bot",
+  "version": "1.2.0",
+  "description": "Production-ready WhatsApp bot using Meta Cloud API and OpenAI GPT-5 Responses API",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "check": "tsc --noEmit",
+    "check:all": "tsc --noEmit"
+  },
+  "keywords": [
+    "whatsapp",
+    "meta",
+    "openai",
+    "gpt-5",
+    "express"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.7",
+    "compression": "^1.7.4",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "helmet": "^8.0.0",
+    "ioredis": "^5.4.1",
+    "pino": "^9.4.0",
+    "pino-http": "^10.3.0"
+  },
+  "devDependencies": {
+    "@types/compression": "^1.7.5",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
